@@ -1,0 +1,16 @@
+{
+  "name": "polyu-ai-p3-workshop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PolyU AMA Primary 3 AI Workshop upload platform",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "sanitize-html": "^2.13.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
