@@ -1,0 +1,96 @@
+<!-- index.html — Student upload page -->
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PolyU AI 創作坊 · P3 上載平台</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- marked.js (CDN) — used to render the friendly instructions written in Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <span class="logo-block red"></span><span class="logo-block gold"></span><span class="logo-block teal"></span>
+      </span>
+      <div class="brand-text">
+        <h1>PolyU AI 創作坊</h1>
+        <p>P3 小小 AI 藝術家上載平台</p>
+      </div>
+    </div>
+    <a class="admin-link" href="admin.html">👩‍🏫 老師專區</a>
+  </header>
+
+  <main class="container">
+    <!-- Friendly instructions (rendered from Markdown by marked.js) -->
+    <section id="instructions" class="card instructions"></section>
+
+    <!-- STEP 1 — verify identity -->
+    <section id="verifyCard" class="card">
+      <h2><span class="step-badge">1</span> 確認身份 · Who are you?</h2>
+
+      <label for="nameSelect">選擇你的名字 · Choose your name</label>
+      <select id="nameSelect" class="big-input">
+        <option value="">— 請選擇 Please choose —</option>
+      </select>
+
+      <label for="studentId">輸入學生編號 · Enter your Student ID</label>
+      <input id="studentId" class="big-input" type="text" inputmode="numeric"
+             placeholder="例如 1001" autocomplete="off" maxlength="12" />
+
+      <button id="verifyBtn" class="btn btn-primary big-btn">✅ 確認 Verify</button>
+      <p id="verifyMsg" class="msg" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- STEP 2 — upload work (hidden until verified) -->
+    <section id="uploadCard" class="card hidden">
+      <h2><span class="step-badge">2</span> 上載作品 · Upload your work</h2>
+      <p class="welcome" id="welcomeMsg"></p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-mode="image" role="tab">🖼️ 圖片 Image</button>
+        <button class="tab" data-mode="html" role="tab">💻 HTML 程式碼 Code</button>
+      </div>
+
+      <!-- Image mode -->
+      <div id="imageMode" class="mode">
+        <div id="dropZone" class="dropzone" tabindex="0" role="button" aria-label="Upload image">
+          <div class="dz-icon">⬆️</div>
+          <p class="dz-title">把圖片拖到這裡<br /><span class="muted">Drag &amp; drop your image here</span></p>
+          <p class="muted">— 或 or —</p>
+          <button id="pickFileBtn" type="button" class="btn btn-secondary">📁 選擇檔案 Choose file</button>
+          <input id="fileInput" type="file" accept="image/*" hidden />
+        </div>
+        <div id="imagePreview" class="preview hidden">
+          <img id="previewImg" alt="Your image preview" />
+          <p id="fileInfo" class="muted"></p>
+          <button id="clearImageBtn" type="button" class="btn btn-text">✖ 移除 Remove</button>
+        </div>
+      </div>
+
+      <!-- HTML mode -->
+      <div id="htmlMode" class="mode hidden">
+        <label for="htmlInput">貼上你的 HTML 程式碼 · Paste your HTML code</label>
+        <textarea id="htmlInput" class="code-area" rows="9"
+                  placeholder="<h1>Hello! 我是小小程式員 🎨</h1>"></textarea>
+        <button id="previewHtmlBtn" type="button" class="btn btn-secondary">👀 預覽 Preview</button>
+        <!-- sandbox="" => fully isolated; CSS renders, scripts cannot run -->
+        <iframe id="htmlPreviewFrame" class="html-preview hidden" sandbox title="HTML preview"></iframe>
+      </div>
+
+      <button id="submitBtn" class="btn btn-primary big-btn">🚀 提交作品 Submit</button>
+      <button id="syncBtn" class="btn btn-text hidden"></button>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
+
+  <footer class="site-footer">
+    <p>© PolyU AMA · Primary&nbsp;3 AI Workshop · Made with ❤️ for young creators</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
