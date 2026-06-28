@@ -1,6 +1,9 @@
-/* api/submissions.js — GET /api/submissions → latest 50 submissions with preview URLs */
+/* api/submissions.js — GET /api/submissions → latest 50 submissions with preview URLs.
+ * Preview/download URLs are proxied through our own /api/file endpoint so the admin
+ * page can render images & HTML with no Google cross-origin / auth headaches.
+ */
 const { applyCors } = require('../lib/http');
-const { listFolderChildren } = require('../lib/graph');
+const { listFolderChildren } = require('../lib/gdrive'); // ← was ../lib/graph
 
 // Filenames are encoded as: studentId__name__timestamp__rest.ext
 function parseName(fileName) {
@@ -13,27 +16,30 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const items = (await listFolderChildren(200)).filter((it) => it.file);
-    items.sort((a, b) => new Date(b.createdDateTime) - new Date(a.createdDateTime));
+    // Build an absolute base URL so it works even if the frontend is on a different origin.
+    const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const base = `${proto}://${host}`;
 
-    const out = items.slice(0, 50).map((it) => {
-      const meta = parseName(it.name);
-      const isHtml = /\.html?$/i.test(it.name);
-      const thumb = it.thumbnails && it.thumbnails[0]
-        && (it.thumbnails[0].large || it.thumbnails[0].medium || it.thumbnails[0].small);
+    const files = await listFolderChildren(50);
+
+    const out = files.map((f) => {
+      const meta = parseName(f.name);
+      const isHtml = /\.html?$/i.test(f.name) || f.mimeType === 'text/html';
       return {
-        id: it.id,
-        fileName: it.name,
+        id: f.id,
+        fileName: f.name,
         studentName: meta.name,
         studentId: meta.studentId,
-        createdDateTime: it.createdDateTime,
-        size: it.size,
+        createdDateTime: f.createdTime,
+        size: f.size ? Number(f.size) : null,
         type: isHtml ? 'html' : 'image',
-        downloadUrl: it['@microsoft.graph.downloadUrl'] || null,
-        thumbnailUrl: thumb ? thumb.url : null,
-        webUrl: it.webUrl || null
+        thumbnailUrl: `${base}/api/file?id=${encodeURIComponent(f.id)}`,         // inline (for <img>)
+        downloadUrl: `${base}/api/file?id=${encodeURIComponent(f.id)}&dl=1`,     // forces download
+        webUrl: `https://drive.google.com/file/d/${f.id}/view`
       };
     });
+
     return res.status(200).json(out);
   } catch (e) {
     console.error('[submissions] error:', e);
