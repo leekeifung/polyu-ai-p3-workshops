@@ -1,32 +1,29 @@
 /* api/upload.js — POST /api/upload
- * Flow: CORS → rate-limit → verify student → size check → sanitize HTML → upload to OneDrive.
+ * Flow: CORS → rate-limit → verify student → size check → sanitize HTML → upload to Google Drive.
  *
- * ┌─────────────────────────── 3-STEP SETUP ───────────────────────────┐
- * │ 1) AZURE: Portal → App registrations → New. Copy Application(client)│
- * │    ID + Directory(tenant) ID. Certificates & secrets → New secret → │
- * │    copy the VALUE. API permissions → Microsoft Graph → APPLICATION  │
- * │    → Files.ReadWrite.All → "Grant admin consent" (PolyU IT admin).  │
- * │ 2) ENV (Vercel → Settings → Environment Variables): AZURE_CLIENT_ID,│
- * │    AZURE_CLIENT_SECRET, AZURE_TENANT_ID, and ONEDRIVE_SHARE_URL      │
- * │    (paste the public folder link) — see .env.example.               │
- * │ 3) DEPLOY: push to GitHub → import to Vercel → done.                │
- * └─────────────────────────────────────────────────────────────────────┘
+ * ┌─────────────────────────── 3-STEP SETUP (Google) ──────────────────────┐
+ * │ 1) GOOGLE CLOUD: console.cloud.google.com → new project → "APIs &      │
+ * │    Services" → Enable "Google Drive API". OAuth consent screen →        │
+ * │    External → add the folder owner (kflee@...) as a Test User.          │
+ * │ 2) CREDENTIALS: Create OAuth client ID (type "Web application"), add    │
+ * │    redirect URI https://developers.google.com/oauthplayground. Then run │
+ * │    `npm run get-token` (or use OAuth Playground) to mint a REFRESH      │
+ * │    TOKEN. Put CLIENT_ID / SECRET / REFRESH_TOKEN / GDRIVE_FOLDER_ID in  │
+ * │    Vercel env vars (see .env.example).                                  │
+ * │ 3) DEPLOY: push to GitHub → import to Vercel → done.                    │
+ * └─────────────────────────────────────────────────────────────────────────┘
  *
- * ⚠️ PLATFORM LIMIT: Vercel request bodies cap at ~4.5 MB. A 10 MB image as
- *    base64 is ~13 MB and would fail. The frontend auto-resizes images to keep
- *    them small, which covers typical workshop files. For guaranteed 10 MB
- *    support, switch to the resumable upload-session flow (see lib/graph.js →
- *    createUploadSession) where the browser PUTs bytes directly to OneDrive.
+ * ⚠️ Vercel request bodies cap at ~4.5 MB; the frontend auto-resizes images to
+ *    stay well under this. The 10 MB rule below is still enforced.
  */
 const sanitizeHtml = require('sanitize-html');
 const { applyCors, rateLimit, getIp } = require('../lib/http');
 const { verifyStudent } = require('../lib/students');
-const { uploadFileBuffer } = require('../lib/graph');
+const { uploadFileBuffer } = require('../lib/gdrive'); // ← was ../lib/graph
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (spec)
 
-// HTML sanitiser: allows kid-friendly styling (CSS, <style>, SVG) but strips
-// <script>, <iframe>, <object>, <link>, and all on* event handlers → blocks XSS.
+// Allows kid-friendly styling/SVG but strips <script>, <iframe>, on* handlers → blocks XSS.
 const SANITIZE = {
   allowedTags: [
     'html', 'head', 'body', 'title', 'style', 'meta',
@@ -66,19 +63,17 @@ const SANITIZE = {
   allowedSchemes: ['http', 'https', 'data', 'mailto'],
   allowedSchemesByTag: { img: ['http', 'https', 'data'] },
   allowProtocolRelative: false,
-  allowVulnerableTags: true // we intentionally permit <style> for CSS art
+  allowVulnerableTags: true
 };
 
-// Replace characters not allowed in OneDrive filenames.
 function safeName(str) {
   return String(str).replace(/[\\/:*?"<>|#%]/g, '_').replace(/\s+/g, '_').slice(0, 50);
 }
 
 module.exports = async (req, res) => {
-  if (applyCors(req, res)) return; // handles OPTIONS preflight
+  if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
-  // Rate-limit: max 12 uploads / minute / IP (best-effort, per serverless instance)
   if (!rateLimit(getIp(req), 12)) {
     return res.status(429).json({ success: false, error: '太快了！請等一分鐘再試。Too many uploads — wait a minute.' });
   }
@@ -121,7 +116,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       success: true,
       id: item.id,
-      url: item.webUrl || item['@microsoft.graph.downloadUrl'] || null,
+      url: item.webViewLink || null,
       name: item.name
     });
 
