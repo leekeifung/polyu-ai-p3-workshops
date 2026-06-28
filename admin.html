@@ -1,0 +1,67 @@
+<!-- admin.html — Lecturer real-time dashboard (auto-refresh every 5s) -->
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>老師儀表板 · Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="admin-body">
+  <header class="site-header">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <span class="logo-block red"></span><span class="logo-block gold"></span><span class="logo-block teal"></span>
+      </span>
+      <div class="brand-text">
+        <h1>老師儀表板</h1>
+        <p>Admin Dashboard · Live Submissions</p>
+      </div>
+    </div>
+    <a class="admin-link" href="index.html">← 學生上載頁</a>
+  </header>
+
+  <main class="container wide">
+    <section class="admin-toolbar card">
+      <div class="stats">
+        <div class="stat"><span id="statCount" class="stat-num">0</span><span class="stat-label">總提交 Total</span></div>
+        <div class="stat"><span id="statImages" class="stat-num">0</span><span class="stat-label">圖片 Images</span></div>
+        <div class="stat"><span id="statHtml" class="stat-num">0</span><span class="stat-label">程式碼 HTML</span></div>
+      </div>
+      <div class="toolbar-actions">
+        <span id="lastUpdated" class="muted"></span>
+        <label class="switch"><input type="checkbox" id="autoRefresh" checked /> 自動更新 (5s)</label>
+        <button id="refreshBtn" class="btn btn-secondary">🔄 更新</button>
+        <button id="exportBtn" class="btn btn-primary">⬇️ 匯出 CSV</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="subs-table">
+          <thead>
+            <tr>
+              <th>預覽 Preview</th><th>名字 Name</th><th>編號 ID</th>
+              <th>類型 Type</th><th>時間 Time</th><th>操作 Actions</th>
+            </tr>
+          </thead>
+          <tbody id="subsBody"></tbody>
+        </table>
+        <p id="emptyMsg" class="empty muted">還沒有提交作品 · No submissions yet…</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Preview modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <button id="modalClose" class="modal-close" aria-label="Close">✖</button>
+      <h3 id="modalTitle"></h3>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
+  <script src="app.js"></script>
+</body>
+</html>
