@@ -12,7 +12,7 @@
    *    If everything is deployed together on Vercel, leave it as '' (same origin).
    * =======================================================================*/
   const CONFIG = {
-    API_BASE: '',
+    API_BASE: 'https://polyu-ai-p3-workshops.vercel.app',
     POLL_INTERVAL_MS: 5000,
     MAX_IMAGE_DIMENSION: 1920, // px — images larger than this are downscaled
     IMAGE_QUALITY: 0.85,       // JPEG quality after resize
