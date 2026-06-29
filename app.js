@@ -104,51 +104,79 @@
   function initStudentPage() {
     const INSTRUCTIONS_MD = [
       '### 👋 歡迎來到 AI 創作坊！',
-      '1. **選擇你的名字**，再輸入老師給你的**學生編號**。',
+      '1. **選擇你的班別**同**名字**，再輸入老師給你的**學生編號**。',
       '2. 上載你用 AI 製作的**圖片** 🖼️，或貼上你的 **HTML 程式碼** 💻。',
       '3. 按 **提交** 🚀 — 完成啦！'
     ].join('\n');
     $('instructions').innerHTML = renderMarkdown(INSTRUCTIONS_MD);
 
-    let verified = null;          // { name, id }
-    let mode = 'image';           // 'image' | 'html'
-    let selectedImage = null;     // { dataUrl, mime, size }
-    let localStudents = null;     // full list (fallback verify)
+    let verified = null;          // { name, id, cls }
+    let mode = 'image';
+    let selectedImage = null;
+    let allStudents = [];         // [{ id, name }, ...]
 
-    /* --- Populate name dropdown (API → fallback to students.json) --- */
-    (async function loadNames() {
-      const select = $('nameSelect');
-      let names = [];
+    const classOf = (id) => String(id || '').slice(0, 2).toUpperCase();
+
+    /* --- Inject a "Class" selector just before the name dropdown --- */
+    const nameSelect = $('nameSelect');
+    const nameLabel  = nameSelect.previousElementSibling;
+    const classSelect = document.createElement('select');
+    classSelect.id = 'classSelect';
+    classSelect.className = nameSelect.className;            // inherit styling
+    const classLabel = document.createElement(nameLabel ? nameLabel.tagName : 'label');
+    if (nameLabel) classLabel.className = nameLabel.className;
+    classLabel.textContent = '選擇班別 · Choose your class';
+    nameSelect.parentNode.insertBefore(classLabel,  nameLabel || nameSelect);
+    nameSelect.parentNode.insertBefore(classSelect, nameLabel || nameSelect);
+    nameSelect.innerHTML = '<option value="">— 請先選擇班別 Choose class first —</option>';
+    nameSelect.disabled = true;
+
+    function populateClasses() {
+      const classes = [...new Set(allStudents.map((s) => classOf(s.id)))].sort();
+      classSelect.innerHTML = '<option value="">— 選擇班別 Choose class —</option>';
+      classes.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        classSelect.appendChild(o);
+      });
+    }
+
+    function populateNames(cls) {
+      nameSelect.innerHTML = '<option value="">— 請選擇 Please choose —</option>';
+      allStudents.filter((s) => classOf(s.id) === cls).forEach((s) => {
+        const o = document.createElement('option');
+        o.value = s.name; o.textContent = s.name;
+        nameSelect.appendChild(o);
+      });
+      nameSelect.disabled = !cls;
+    }
+
+    classSelect.addEventListener('change', () => populateNames(classSelect.value));
+
+    /* --- Load student list (students.json has both id & name) --- */
+    (async function loadStudents() {
       try {
-        const res = await fetch(apiUrl('/api/students'));
-        if (res.ok) names = (await res.json()).map((s) => s.name);
-      } catch { /* fall through */ }
-      if (!names.length) {
+        const res = await fetch('students.json', { cache: 'no-store' });
+        if (res.ok) allStudents = await res.json();
+      } catch { /* fall through to API */ }
+      if (!allStudents.length) {
         try {
-          const res = await fetch('students.json');
-          localStudents = await res.json();
-          names = localStudents.map((s) => s.name);
+          const res = await fetch(apiUrl('/api/students'));
+          if (res.ok) allStudents = await res.json();
         } catch { toast('無法載入名單 Could not load name list', 'err'); }
       }
-      names.forEach((n) => {
-        const o = document.createElement('option');
-        o.value = n; o.textContent = n; select.appendChild(o);
-      });
+      populateClasses();
     })();
-
-    async function ensureLocalStudents() {
-      if (localStudents) return localStudents;
-      try { localStudents = await (await fetch('students.json')).json(); } catch { localStudents = []; }
-      return localStudents;
-    }
 
     /* --- Verify --- */
     $('verifyBtn').addEventListener('click', async () => {
-      const name = $('nameSelect').value.trim();
-      const id = $('studentId').value.trim();
-      const msg = $('verifyMsg');
-      if (!name) { msg.className = 'msg err'; msg.textContent = '⚠️ 請先選擇名字 Please choose your name.'; return; }
-      if (!id) { msg.className = 'msg err'; msg.textContent = '⚠️ 請輸入學生編號 Please enter your ID.'; return; }
+      const cls  = classSelect.value.trim();
+      const name = nameSelect.value.trim();
+      const id   = $('studentId').value.trim();
+      const msg  = $('verifyMsg');
+      if (!cls)  { msg.className = 'msg err'; msg.textContent = '⚠️ 請先選擇班別 Please choose your class.'; return; }
+      if (!name) { msg.className = 'msg err'; msg.textContent = '⚠️ 請選擇名字 Please choose your name.'; return; }
+      if (!id)   { msg.className = 'msg err'; msg.textContent = '⚠️ 請輸入學生編號 Please enter your ID.'; return; }
 
       $('verifyBtn').disabled = true;
       msg.className = 'msg'; msg.textContent = '檢查中… Checking…';
@@ -158,14 +186,18 @@
         const r = await postJSON('/api/verify', { name, studentId: id });
         valid = !!(r.data && r.data.valid);
       } catch {
-        // Fallback: verify against local students.json
-        const list = await ensureLocalStudents();
-        valid = list.some((s) => String(s.id) === id && s.name === name);
+        valid = allStudents.some((s) => String(s.id) === id && s.name === name);
       }
       $('verifyBtn').disabled = false;
 
+      if (valid && classOf(id) !== cls) {
+        msg.className = 'msg err';
+        msg.textContent = `❌ 這個編號不屬於 ${cls} 班 · This ID is not in class ${cls}.`;
+        return;
+      }
+
       if (valid) {
-        verified = { name, id };
+        verified = { name, id, cls };
         msg.className = 'msg ok'; msg.textContent = '✅ 確認成功 Verified!';
         $('welcomeMsg').textContent = `你好，${name}！🎉 準備好上載你的作品了嗎？`;
         $('uploadCard').classList.remove('hidden');
@@ -218,7 +250,7 @@
     $('previewHtmlBtn').addEventListener('click', () => {
       const code = $('htmlInput').value;
       const frame = $('htmlPreviewFrame');
-      frame.srcdoc = code;            // sandbox="" => isolated, scripts won't run
+      frame.srcdoc = code;
       frame.classList.remove('hidden');
     });
 
@@ -231,12 +263,13 @@
       let payload;
       if (mode === 'image') {
         if (!selectedImage) { toast('請先選擇圖片 Please choose an image', 'err'); return; }
-        payload = { name: verified.name, studentId: verified.id, type: 'image',
-                    fileName: selectedImage.fileName, base64Data: selectedImage.dataUrl };
+        payload = { name: verified.name, studentId: verified.id, studentClass: verified.cls,
+                    type: 'image', fileName: selectedImage.fileName, base64Data: selectedImage.dataUrl };
       } else {
         const content = $('htmlInput').value.trim();
         if (!content) { toast('請先貼上程式碼 Please paste your code', 'err'); return; }
-        payload = { name: verified.name, studentId: verified.id, type: 'html', content };
+        payload = { name: verified.name, studentId: verified.id, studentClass: verified.cls,
+                    type: 'html', content };
       }
 
       const btn = $('submitBtn');
@@ -251,9 +284,8 @@
           throw new Error((r.data && r.data.error) || ('HTTP ' + r.status));
         }
       } catch (err) {
-        // Graceful fallback → store locally, offer "Sync Later"
         const q = readQueue(); q.push({ ...payload, savedAt: Date.now() }); writeQueue(q);
-        toast('⚠️ 暫時無法連線，已儲存在本機。Saved locally — use “Sync Later”.', 'warn');
+        toast('⚠️ 暫時無法連線，已儲存在本機。Saved locally — use "Sync Later".', 'warn');
         refreshSyncButton();
       } finally {
         btn.disabled = false; btn.textContent = label;
@@ -299,13 +331,34 @@
     let timer = null;
     let current = [];
 
+    const classOf = (id) => String(id || '').slice(0, 2).toUpperCase();
+    const CLASSES = ['3A','3B','3C','3D','4A','4B','4C','4D','6A','6B','6C','6D'];
+
+    /* --- Inject a Class filter into the toolbar (before Refresh) --- */
+    const classFilter = document.createElement('select');
+    classFilter.id = 'classFilter';
+    classFilter.innerHTML = '<option value="">— 選擇班別 Choose class —</option>' +
+      CLASSES.map((c) => `<option value="${c}">${c}</option>`).join('');
+    const anchor = $('refreshBtn');
+    anchor.parentNode.insertBefore(classFilter, anchor);
+
     async function fetchSubmissions() {
+      const cls = classFilter.value;
+      if (!cls) {
+        current = []; render(current);
+        $('emptyMsg').textContent = '請先選擇班別 · Please choose a class first';
+        $('emptyMsg').style.display = 'block';
+        $('lastUpdated').textContent = '';
+        return;
+      }
       try {
-        const res = await fetch(apiUrl('/api/submissions'));
+        const res = await fetch(apiUrl('/api/submissions?class=' + encodeURIComponent(cls)));
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        current = await res.json();
+        let rows = await res.json();
+        rows = rows.filter((r) => classOf(r.studentId) === cls);   // safety net
+        current = rows;
         render(current);
-        $('lastUpdated').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-HK');
+        $('lastUpdated').textContent = `更新於 ${new Date().toLocaleTimeString('zh-HK')} · ${cls} 班`;
       } catch (err) {
         $('lastUpdated').textContent = '⚠️ 連線失敗 — 將重試';
       }
@@ -315,13 +368,13 @@
       const body = $('subsBody');
       body.innerHTML = '';
       $('emptyMsg').style.display = rows.length ? 'none' : 'block';
+      if (!rows.length && classFilter.value) $('emptyMsg').textContent = '還沒有提交作品 · No submissions yet…';
 
       let imgN = 0, htmlN = 0;
       rows.forEach((r) => {
         if (r.type === 'image') imgN++; else htmlN++;
         const tr = document.createElement('tr');
 
-        // Preview cell
         const previewTd = document.createElement('td');
         if (r.type === 'image') {
           const img = document.createElement('img');
@@ -340,7 +393,7 @@
 
         tr.appendChild(cell(escapeHtml(r.studentName)));
         tr.appendChild(cell(escapeHtml(r.studentId)));
-        tr.appendChild(cell(`<span class="badge ${r.type}">${r.type === 'image' ? '🖼️ 圖片' : '💻 HTML'}</span>`, true));
+        tr.appendChild(cell(`<span class="badge ${r.type}">${r.type === 'image' ? '🖼️ 圖片' : '💻 HTML'}</span>`));
         tr.appendChild(cell(escapeHtml(new Date(r.createdDateTime).toLocaleString('zh-HK'))));
 
         const actions = document.createElement('td');
@@ -360,14 +413,8 @@
       $('statHtml').textContent = htmlN;
     }
 
-    function cell(html, isHtml) {
-      const td = document.createElement('td');
-      if (isHtml) td.innerHTML = html; else td.textContent = html.replace(/&[a-z#0-9]+;/g, (m) => m); // already escaped
-      if (!isHtml) td.innerHTML = html;
-      return td;
-    }
+    function cell(html) { const td = document.createElement('td'); td.innerHTML = html; return td; }
 
-    /* --- Modals --- */
     function openImageModal(r) {
       $('modalTitle').textContent = `${r.studentName} (${r.studentId})`;
       $('modalContent').innerHTML = `<img src="${escapeHtml(r.downloadUrl || r.thumbnailUrl)}" alt="${escapeHtml(r.studentName)}">`;
@@ -379,12 +426,11 @@
       $('modal').classList.remove('hidden');
       let html = '<p class="muted">無法載入內容</p>';
       try {
-        // Proxy through our API to avoid cross-origin issues
         const res = await fetch(apiUrl('/api/file?id=' + encodeURIComponent(r.id)));
         if (res.ok) html = await res.text();
       } catch { /* keep fallback */ }
       const frame = document.createElement('iframe');
-      frame.setAttribute('sandbox', ''); // isolated render
+      frame.setAttribute('sandbox', '');
       frame.srcdoc = html;
       $('modalContent').innerHTML = '';
       $('modalContent').appendChild(frame);
@@ -392,27 +438,27 @@
     $('modalClose').addEventListener('click', () => $('modal').classList.add('hidden'));
     $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) $('modal').classList.add('hidden'); });
 
-    /* --- CSV export --- */
     $('exportBtn').addEventListener('click', () => {
-      const headers = ['Name', 'StudentID', 'Type', 'FileName', 'Time', 'DownloadURL'];
+      const headers = ['Class', 'Name', 'StudentID', 'Type', 'FileName', 'Time', 'DownloadURL'];
       const csvEscape = (v) => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
       const lines = [headers.join(',')];
-      current.forEach((r) => lines.push([r.studentName, r.studentId, r.type, r.fileName, r.createdDateTime, r.downloadUrl || ''].map(csvEscape).join(',')));
+      current.forEach((r) => lines.push([classOf(r.studentId), r.studentName, r.studentId, r.type, r.fileName, r.createdDateTime, r.downloadUrl || ''].map(csvEscape).join(',')));
       const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `polyu_submissions_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `polyu_submissions_${classFilter.value || 'all'}_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(a.href);
     });
 
-    /* --- Polling control --- */
     function startTimer() { stopTimer(); timer = setInterval(fetchSubmissions, CONFIG.POLL_INTERVAL_MS); }
     function stopTimer() { if (timer) clearInterval(timer); timer = null; }
     $('autoRefresh').addEventListener('change', (e) => { e.target.checked ? startTimer() : stopTimer(); });
     $('refreshBtn').addEventListener('click', fetchSubmissions);
+    classFilter.addEventListener('change', fetchSubmissions);
 
-    fetchSubmissions();
+    render([]);
+    $('emptyMsg').textContent = '請先選擇班別 · Please choose a class first';
     startTimer();
   }
 
