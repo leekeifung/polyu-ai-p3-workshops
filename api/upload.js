@@ -16,12 +16,34 @@
  * ⚠️ Vercel request bodies cap at ~4.5 MB; the frontend auto-resizes images to
  *    stay well under this. The 10 MB rule below is still enforced.
  */
+/* api/upload.js — POST /api/upload
+ * Flow: CORS → rate-limit → verify student → size check → sanitize HTML → upload to Google Drive.
+ * Each class (3A, 3B … 6D) is routed to its own Drive folder, derived from the student ID.
+ */
 const sanitizeHtml = require('sanitize-html');
 const { applyCors, rateLimit, getIp } = require('../lib/http');
 const { verifyStudent } = require('../lib/students');
-const { uploadFileBuffer } = require('../lib/gdrive'); // ← was ../lib/graph
+const { uploadFileBuffer } = require('../lib/gdrive');
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (spec)
+
+/* ── Per-class Google Drive folders (3A uses the original MSP3 folder) ── */
+const CLASS_FOLDERS = {
+  '3A': '1V2H5XcRbsbtABBIyEQF_9YUCol6YK03I',
+  '3B': '12ijDy1oMzXq43-bjDDpmWmJjFNK3W5eQ',
+  '3C': '1guldQZrKw48n1lqnIE1r5NvHgiOWbr5n',
+  '3D': '1g6sIRZHaLD41rSfYGRkXcVKjzfdUpy8E',
+  '4A': '1ap8gChQvw5XhWehBKqEiMQe3Cl72q1qp',
+  '4B': '1pKcnZXkZzogG82iuvP8FMiQCwjhSz427',
+  '4C': '1JxDDbwHUG_vCvNzWMqOrLcmth38TZQ58',
+  '4D': '1u36AWJgZPSXqEM3LRKnfXYU7pwg3Hxys',
+  '6A': '1QhL9ebljevGnwUoFA2HcQJMerv3o-mFd',
+  '6B': '1tXLsx9sHX0Iu_UKNoY-XTBW28CcXZU2M',
+  '6C': '14UOhLi_Z35lr6fng17PAWSP5FX2Aaqpt',
+  '6D': '10Jb1AVVVa3IcPwimuW8emgD0DaaBbcz2'
+};
+const classOf = (id) => String(id || '').slice(0, 2).toUpperCase();
+const folderForClass = (cls) => CLASS_FOLDERS[String(cls || '').toUpperCase()] || process.env.GDRIVE_FOLDER_ID;
 
 // Allows kid-friendly styling/SVG but strips <script>, <iframe>, on* handlers → blocks XSS.
 const SANITIZE = {
@@ -84,6 +106,10 @@ module.exports = async (req, res) => {
     if (!name || !studentId) return res.status(400).json({ success: false, error: 'Missing name or studentId' });
     if (!verifyStudent(name, studentId)) return res.status(403).json({ success: false, error: '學生身份驗證失敗 Invalid student credentials' });
 
+    // Route to the correct Drive folder based on the (verified) student ID.
+    const cls = classOf(studentId);
+    const folderId = folderForClass(cls);
+
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const prefix = `${safeName(studentId)}__${safeName(name)}__${ts}`;
 
@@ -112,12 +138,13 @@ module.exports = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid type — use "image" or "html"' });
     }
 
-    const item = await uploadFileBuffer(finalName, buffer, contentType);
+    const item = await uploadFileBuffer(finalName, buffer, contentType, folderId);
     return res.status(200).json({
       success: true,
       id: item.id,
       url: item.webViewLink || null,
-      name: item.name
+      name: item.name,
+      class: cls
     });
 
   } catch (e) {
